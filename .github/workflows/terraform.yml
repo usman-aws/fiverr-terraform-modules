@@ -1,0 +1,49 @@
+name: Terraform CI
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - main
+
+# Read-only checks, so cancelling a superseded run on the same ref is safe.
+concurrency:
+  group: terraform-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  TF_VERSION: "1.9.8"
+
+jobs:
+  validate:
+    name: fmt / init / validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        # Directory holding the Terraform module. Change to "." if the .tf
+        # files live at the repository root.
+        working-directory: vpc-foundation
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Format check
+        run: terraform fmt -check -recursive -diff
+
+      # -backend=false initialises providers and modules without configuring a
+      # backend, so no AWS credentials or state access are needed to validate.
+      - name: Init
+        run: terraform init -backend=false -input=false
+
+      - name: Validate
+        run: terraform validate -no-color
