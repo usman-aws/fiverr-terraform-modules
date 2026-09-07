@@ -1,0 +1,57 @@
+project: example-app
+environment: dev
+region: us-east-1
+
+vpc:
+  cidr: "10.0.0.0/16"
+  # Number of Availability Zones to span. Each subnet list below must contain
+  # exactly this many CIDRs, one per AZ.
+  availability_zone_count: 2
+
+# Three tiers, one CIDR per AZ per tier:
+#   public   - internet-facing resources (ALB, NAT gateways)
+#   private  - application workloads with outbound-only internet via NAT
+#   isolated - data stores with no route off the VPC (RDS, ElastiCache)
+subnets:
+  public:
+    - "10.0.0.0/24"
+    - "10.0.1.0/24"
+  private:
+    - "10.0.10.0/24"
+    - "10.0.11.0/24"
+  isolated:
+    - "10.0.20.0/24"
+    - "10.0.21.0/24"
+
+nat:
+  # single  - one shared NAT gateway (lowest cost, single-AZ egress failure domain)
+  # per_az  - one NAT gateway per AZ (higher cost, no cross-AZ egress dependency)
+  # none    - no NAT; private subnets have no outbound internet route
+  mode: single
+
+flow_logs:
+  enabled: true
+  # cloud-watch-logs | s3
+  destination: cloud-watch-logs
+  retention_in_days: 30
+  # Optional customer-managed KMS key for the log group. Empty = AWS-managed key.
+  kms_key_arn: ""
+  # Required only when destination is "s3". Provide an existing bucket ARN.
+  # s3_bucket_arn: "arn:aws:s3:::example-app-flow-logs"
+
+endpoints:
+  # Gateway endpoints are free and keep S3/DynamoDB traffic off the NAT path.
+  gateway:
+    s3: true
+    dynamodb: true
+  # Interface endpoints are billed per-AZ per-hour plus data. Off by default.
+  # Add service short-names to enable, e.g.:
+  #   - ecr.api
+  #   - ecr.dkr
+  #   - logs
+  #   - ssm
+  interface: []
+
+tags:
+  Owner: platform-team
+  CostCenter: "cc-1234"
