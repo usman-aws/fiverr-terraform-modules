@@ -104,4 +104,4 @@ jobs:
 
       - run: pip install checkov
 
-      - run: checkov -d . --framework terraform --compact --quiet
+      - run: checkov -d . --framework terraform --config-file .checkov.yaml --compact --quiet

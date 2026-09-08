@@ -1,0 +1,17 @@
+# Two checks suppressed repo-wide. Both are intentional, documented design
+# choices -- see modules/vpc/README.md "Security Considerations" and the
+# inline `checkov:skip` comments at each resource in modules/vpc/main.tf.
+#
+# CKV_AWS_130 - public subnets auto-assign a public IP by design: the public
+#   tier exists for ALBs/NAT gateways. The README instructs application
+#   workloads into the private tier instead.
+# CKV2_AWS_5  - the flagged security group IS attached, via
+#   aws_vpc_endpoint.interface.security_group_ids in the same file.
+#
+# Suppressed here rather than relying on the inline `checkov:skip` comments
+# alone: checkov does not reliably honor inline skips for a resource that is
+# only reached through a module call graph, which is the case for both of
+# these (both are reported via examples/vpc-basic's module block).
+skip-check:
+  - CKV_AWS_130
+  - CKV2_AWS_5
