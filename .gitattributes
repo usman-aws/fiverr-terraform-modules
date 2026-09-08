@@ -1,0 +1,10 @@
+# Normalize line endings to LF in the repo regardless of the checkout
+# platform, so `terraform fmt -check` is consistent between local Windows
+# development and Linux-based CI.
+* text=auto eol=lf
+
+*.tf   text eol=lf
+*.tfvars text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.md   text eol=lf
