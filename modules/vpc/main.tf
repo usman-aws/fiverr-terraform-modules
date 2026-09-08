@@ -34,7 +34,7 @@ resource "aws_vpc" "this" {
   enable_dns_support   = true
   enable_dns_hostnames = true
 
-  tags = { Name = local.name_prefix }
+  tags = merge(local.tags, { Name = local.name_prefix })
 }
 
 # Lock the VPC's default security group to deny-all. Nothing should attach to
@@ -43,15 +43,16 @@ resource "aws_vpc" "this" {
 resource "aws_default_security_group" "this" {
   vpc_id = aws_vpc.this.id
 
-  tags = { Name = "${local.name_prefix}-default-locked" }
+  tags = merge(local.tags, { Name = "${local.name_prefix}-default-locked" })
 }
 
 resource "aws_internet_gateway" "this" {
   vpc_id = aws_vpc.this.id
 
-  tags = { Name = local.name_prefix }
+  tags = merge(local.tags, { Name = local.name_prefix })
 }
 
+#checkov:skip=CKV_AWS_130:Public tier is for ALBs/NAT gateways by design; application workloads belong in the private tier (see README Security Considerations).
 resource "aws_subnet" "public" {
   for_each = local.public_subnets
 
@@ -60,10 +61,10 @@ resource "aws_subnet" "public" {
   availability_zone       = each.value.az
   map_public_ip_on_launch = true
 
-  tags = {
+  tags = merge(local.tags, {
     Name = "${local.name_prefix}-public-${each.value.az}"
     Tier = "public"
-  }
+  })
 }
 
 resource "aws_subnet" "private" {
@@ -73,10 +74,10 @@ resource "aws_subnet" "private" {
   cidr_block        = each.value.cidr
   availability_zone = each.value.az
 
-  tags = {
+  tags = merge(local.tags, {
     Name = "${local.name_prefix}-private-${each.value.az}"
     Tier = "private"
-  }
+  })
 }
 
 resource "aws_subnet" "isolated" {
@@ -86,10 +87,10 @@ resource "aws_subnet" "isolated" {
   cidr_block        = each.value.cidr
   availability_zone = each.value.az
 
-  tags = {
+  tags = merge(local.tags, {
     Name = "${local.name_prefix}-isolated-${each.value.az}"
     Tier = "isolated"
-  }
+  })
 }
 
 resource "aws_eip" "nat" {
@@ -97,7 +98,7 @@ resource "aws_eip" "nat" {
 
   domain = "vpc"
 
-  tags = { Name = "${local.name_prefix}-nat-${each.key}" }
+  tags = merge(local.tags, { Name = "${local.name_prefix}-nat-${each.key}" })
 }
 
 resource "aws_nat_gateway" "this" {
@@ -106,7 +107,7 @@ resource "aws_nat_gateway" "this" {
   allocation_id = aws_eip.nat[each.key].id
   subnet_id     = aws_subnet.public[each.key].id
 
-  tags = { Name = "${local.name_prefix}-nat-${each.key}" }
+  tags = merge(local.tags, { Name = "${local.name_prefix}-nat-${each.key}" })
 
   depends_on = [aws_internet_gateway.this]
 }
@@ -114,7 +115,7 @@ resource "aws_nat_gateway" "this" {
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.this.id
 
-  tags = { Name = "${local.name_prefix}-public" }
+  tags = merge(local.tags, { Name = "${local.name_prefix}-public" })
 }
 
 resource "aws_route" "public_internet" {
@@ -130,7 +131,7 @@ resource "aws_route_table" "private" {
 
   vpc_id = aws_vpc.this.id
 
-  tags = { Name = "${local.name_prefix}-private-${each.key}" }
+  tags = merge(local.tags, { Name = "${local.name_prefix}-private-${each.key}" })
 }
 
 resource "aws_route" "private_nat" {
@@ -146,7 +147,7 @@ resource "aws_route" "private_nat" {
 resource "aws_route_table" "isolated" {
   vpc_id = aws_vpc.this.id
 
-  tags = { Name = "${local.name_prefix}-isolated" }
+  tags = merge(local.tags, { Name = "${local.name_prefix}-isolated" })
 }
 
 resource "aws_route_table_association" "public" {
@@ -182,7 +183,7 @@ resource "aws_vpc_endpoint" "s3" {
     [aws_route_table.isolated.id],
   )
 
-  tags = { Name = "${local.name_prefix}-s3" }
+  tags = merge(local.tags, { Name = "${local.name_prefix}-s3" })
 }
 
 resource "aws_vpc_endpoint" "dynamodb" {
@@ -197,9 +198,10 @@ resource "aws_vpc_endpoint" "dynamodb" {
     [aws_route_table.isolated.id],
   )
 
-  tags = { Name = "${local.name_prefix}-dynamodb" }
+  tags = merge(local.tags, { Name = "${local.name_prefix}-dynamodb" })
 }
 
+#checkov:skip=CKV2_AWS_5:Attached to aws_vpc_endpoint.interface via security_group_ids below; checkov's attachment check does not recognize VPC interface endpoints as a consumer.
 resource "aws_security_group" "vpc_endpoints" {
   count = length(local.interface_endpoints) > 0 ? 1 : 0
 
@@ -223,7 +225,7 @@ resource "aws_security_group" "vpc_endpoints" {
     cidr_blocks = [aws_vpc.this.cidr_block]
   }
 
-  tags = { Name = "${local.name_prefix}-vpce" }
+  tags = merge(local.tags, { Name = "${local.name_prefix}-vpce" })
 }
 
 resource "aws_vpc_endpoint" "interface" {
@@ -236,7 +238,7 @@ resource "aws_vpc_endpoint" "interface" {
   security_group_ids  = [aws_security_group.vpc_endpoints[0].id]
   private_dns_enabled = true
 
-  tags = { Name = "${local.name_prefix}-${replace(each.value, ".", "-")}" }
+  tags = merge(local.tags, { Name = "${local.name_prefix}-${replace(each.value, ".", "-")}" })
 }
 
 resource "aws_cloudwatch_log_group" "flow_logs" {
@@ -246,7 +248,7 @@ resource "aws_cloudwatch_log_group" "flow_logs" {
   retention_in_days = try(local.config.flow_logs.retention_in_days, 30)
   kms_key_id        = local.flow_logs_kms_key_arn != "" ? local.flow_logs_kms_key_arn : null
 
-  tags = { Name = "${local.name_prefix}-flow-logs" }
+  tags = merge(local.tags, { Name = "${local.name_prefix}-flow-logs" })
 }
 
 data "aws_iam_policy_document" "flow_logs_assume" {
@@ -306,5 +308,5 @@ resource "aws_flow_log" "this" {
   log_destination      = local.flow_logs_to_s3 ? try(local.config.flow_logs.s3_bucket_arn, null) : aws_cloudwatch_log_group.flow_logs[0].arn
   iam_role_arn         = local.flow_logs_to_cw ? aws_iam_role.flow_logs[0].arn : null
 
-  tags = { Name = "${local.name_prefix}-flow-logs" }
+  tags = merge(local.tags, { Name = "${local.name_prefix}-flow-logs" })
 }

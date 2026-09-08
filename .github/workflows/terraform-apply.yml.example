@@ -1,0 +1,112 @@
+# ---------------------------------------------------------------------------
+# Terraform CD (plan + apply) — TEMPLATE / DISABLED
+#
+# This file's ".example" suffix means GitHub Actions does NOT load or run it.
+# It documents the plan-on-PR -> manual approval -> apply-on-merge pipeline and
+# is ready to activate once the prerequisites below are in place.
+#
+# Enable it by:
+#   1. GitHub OIDC -> AWS: create an IAM role that trusts
+#      token.actions.githubusercontent.com, scoped to this repository, granting
+#      only the permissions this module needs. No long-lived AWS keys.
+#   2. Remote state: configure a backend (e.g. S3 + DynamoDB lock) in a root
+#      configuration. This child module has no backend of its own; applying
+#      against local state in CI would be discarded on each run.
+#   3. Approval gate: create an Environment named "production"
+#      (Settings -> Environments) and add yourself as a Required reviewer.
+#      That is what pauses the apply job until you approve it.
+#   4. Set repository variables AWS_ROLE_ARN and AWS_REGION.
+#   5. Rename this file to "terraform-apply.yml".
+#
+# This template is scoped to a single module (modules/vpc). Copy it per
+# module that needs its own apply pipeline, updating the `paths` filters and
+# `working-directory` below to match.
+# ---------------------------------------------------------------------------
+
+name: Terraform Apply (vpc)
+
+on:
+  # Plan on every PR into main so the change is reviewable before merge.
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'modules/vpc/**'
+  # Apply after the PR is merged (push to main), behind the approval gate.
+  push:
+    branches:
+      - main
+    paths:
+      - 'modules/vpc/**'
+
+# OIDC needs id-token: write. Nothing here needs write access to repo contents.
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_VERSION: "1.9.8"
+
+jobs:
+  plan:
+    name: plan
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: modules/vpc
+    concurrency:
+      group: terraform-plan-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - run: terraform init -input=false
+
+      - run: terraform plan -no-color -input=false
+      # Optional enhancement: post the plan back to the PR as a comment using
+      # actions/github-script (requires pull-requests: write).
+
+  apply:
+    name: apply
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # The approval gate: GitHub pauses this job until a required reviewer on the
+    # "production" environment approves it.
+    environment: production
+    defaults:
+      run:
+        working-directory: modules/vpc
+    # Never cancel an in-flight apply.
+    concurrency:
+      group: terraform-apply-main
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - run: terraform init -input=false
+
+      # The environment reviewer is the human approval; -auto-approve is correct
+      # here because CI has no interactive prompt. For strict promotion, save a
+      # plan artifact in the PR run and apply that exact plan instead.
+      - run: terraform apply -auto-approve -input=false

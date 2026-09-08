@@ -14,7 +14,7 @@
 #
 #   terraform init -migrate-state \
 #     -backend-config="bucket=example-app-tfstate" \
-#     -backend-config="key=vpc-foundation/terraform.tfstate" \
+#     -backend-config="key=vpc/terraform.tfstate" \
 #     -backend-config="region=us-east-1" \
 #     -backend-config="dynamodb_table=example-app-tf-locks"
 #
@@ -24,7 +24,7 @@
 # terraform {
 #   backend "s3" {
 #     bucket         = "example-app-tfstate"
-#     key            = "vpc-foundation/terraform.tfstate"
+#     key            = "vpc/terraform.tfstate"
 #     region         = "us-east-1"
 #     encrypt        = true
 #     dynamodb_table = "example-app-tf-locks" # Terraform < 1.10
