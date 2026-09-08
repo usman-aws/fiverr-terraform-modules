@@ -1,0 +1,107 @@
+name: Terraform CI
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - main
+
+# Read-only checks, so cancelling a superseded run on the same ref is safe.
+concurrency:
+  group: terraform-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  TF_VERSION: "1.9.8"
+
+jobs:
+  fmt:
+    name: terraform fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # Recursive, so this one command covers every module and example in the
+      # repo without needing to be updated as new ones are added.
+      - run: terraform fmt -check -recursive -diff
+
+  discover:
+    name: discover root modules
+    runs-on: ubuntu-latest
+    outputs:
+      dirs: ${{ steps.list.outputs.dirs }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # A "root module" here is any directory containing its own .tf files
+      # (modules/*, examples/*/...). Each one needs its own init + validate,
+      # since Terraform validates one root configuration at a time.
+      - id: list
+        run: |
+          dirs=$(find . -name '*.tf' -not -path './.git/*' -not -path '*/.terraform/*' -printf '%h\n' \
+            | sed 's|^\./||' | sort -u)
+          json=$(printf '%s\n' "$dirs" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "dirs=$json" >> "$GITHUB_OUTPUT"
+
+  validate:
+    name: init / validate (${{ matrix.dir }})
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJSON(needs.discover.outputs.dirs) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # -backend=false initialises providers and modules without configuring a
+      # backend, so no AWS credentials or state access are needed to validate.
+      - name: Init
+        run: terraform init -backend=false -input=false
+
+      - name: Validate
+        run: terraform validate -no-color
+
+  lint:
+    name: tflint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: terraform-linters/setup-tflint@v6.0.0
+        with:
+          tflint_version: latest
+
+      # --recursive walks every directory under the repo root, so this covers
+      # all current and future modules/examples in one invocation.
+      - run: tflint --recursive --format compact
+
+  security:
+    name: checkov
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install checkov
+
+      - run: checkov -d . --framework terraform --compact --quiet
