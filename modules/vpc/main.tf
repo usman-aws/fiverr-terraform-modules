@@ -52,6 +52,7 @@ resource "aws_internet_gateway" "this" {
   tags = merge(local.tags, { Name = local.name_prefix })
 }
 
+#checkov:skip=CKV_AWS_130:Public tier is for ALBs/NAT gateways by design; application workloads belong in the private tier (see README Security Considerations).
 resource "aws_subnet" "public" {
   for_each = local.public_subnets
 
@@ -200,6 +201,7 @@ resource "aws_vpc_endpoint" "dynamodb" {
   tags = merge(local.tags, { Name = "${local.name_prefix}-dynamodb" })
 }
 
+#checkov:skip=CKV2_AWS_5:Attached to aws_vpc_endpoint.interface via security_group_ids below; checkov's attachment check does not recognize VPC interface endpoints as a consumer.
 resource "aws_security_group" "vpc_endpoints" {
   count = length(local.interface_endpoints) > 0 ? 1 : 0
 
